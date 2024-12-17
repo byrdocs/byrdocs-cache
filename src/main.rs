@@ -40,6 +40,35 @@ struct CacheStats {
     hit: u32,
     miss: u32,
     unknown: u32,
+    total_age: u64,
+}
+
+fn format_duration(seconds: u64) -> String {
+    if seconds == 0 {
+        return "0s".to_string();
+    }
+
+    let days = seconds / (24 * 3600);
+    let hours = (seconds % (24 * 3600)) / 3600;
+    let minutes = (seconds % 3600) / 60;
+    let secs = seconds % 60;
+
+    let mut parts = Vec::new();
+    if days > 0 {
+        parts.push(format!("{}d", days));
+    }
+    if hours > 0 {
+        parts.push(format!("{}h", hours));
+    }
+    if minutes > 0 {
+        parts.push(format!("{}m", minutes));
+    }
+    if secs > 0 {
+        parts.push(format!("{}s", secs));
+    }
+
+    parts.truncate(2);
+    parts.join("")
 }
 
 #[tokio::main]
@@ -155,7 +184,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match resp.headers().get("cf-cache-status").map(|v| v.to_str().unwrap_or("")) {
                     Some("HIT") => {
                         stats.hit += 1;
-                        "HIT".green()
+                        if let Some(age) = resp.headers().get("age") {
+                            if let Ok(age_secs) = age.to_str().unwrap_or("0").parse::<u64>() {
+                                stats.total_age += age_secs;
+                                format!("HIT (age: {})", format_duration(age_secs)).green()
+                            } else {
+                                "HIT".green()
+                            }
+                        } else {
+                            "HIT".green()
+                        }
                     },
                     Some("MISS") => {
                         stats.miss += 1;
@@ -196,6 +234,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if stats.total > 0 {
         let cache_ratio = (stats.hit as f64 / stats.total as f64 * 100.0).round();
         println!("缓存率: {}%", cache_ratio);
+        if stats.hit > 0 {
+            let avg_age = stats.total_age / stats.hit as u64;
+            println!("平均缓存时间: {}", format_duration(avg_age));
+        }
     }
 
     Ok(())
