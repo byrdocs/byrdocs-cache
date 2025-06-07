@@ -3,7 +3,7 @@ permissions:
   contents: write
 on:
   release:
-    types: [created]
+    types: [created, edited]
 
 jobs:
   build:
@@ -25,7 +25,8 @@ jobs:
           PROJECT_NAME=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("Cargo.toml")) | .name' | head -n 1)
           echo "name=${PROJECT_NAME}" >> $GITHUB_OUTPUT
           echo "Project name determined as: ${PROJECT_NAME}"
-
+      - name: Install target
+        run: rustup target add ${{ matrix.target }}
       - name: Build binary
         run: cargo build --verbose --release --target ${{ matrix.target }}
         env:
