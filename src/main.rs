@@ -12,7 +12,10 @@ struct Cli {
     check_type: CheckType,
 
     #[arg(short, long, default_value = None)]
-    cookie: Option<String>
+    cookie: Option<String>,
+
+    #[arg(short, long, default_value = None)]
+    token: Option<String>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, ValueEnum, Debug)]
@@ -130,12 +133,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let filename = filename.clone();
             let pbc = pb.clone();
             let cookie = cli.cookie.clone();
+            let token = cli.token.clone();
             async move {
                 let url = format!("https://byrdocs.org/files/{}", filename);
-                let resp = client
-                    .head(&url)
-                    .header("cookie", cookie.as_deref().unwrap_or(""))
-                    .send().await;
+                let mut req = client
+                    .head(&url);
+                if let Some(cookie) = cookie {
+                    req = req.header("cookie", cookie);
+                }
+                if let Some(token) = token {
+                    req = req.header("X-Byrdocs-Token", token);
+                }
+                let resp = req.send().await;
 
                 if let Ok(r) = &resp {
                     match r.headers().get("content-type") {
@@ -145,7 +154,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     Ok(resp) => {
                                         let content = resp.text().await.unwrap();
                                         if content.contains("您没有使用北邮校园网(IPv6)访问本站") {
-                                            println!("{}", "error: 未登录, 使用 --cookie 参数登录".red());
+                                            println!("{}", "error: 未登录, 使用 --cookie 或 --token 参数登录".red());
                                             exit(1)
                                         }
                                         let filename = format!("{}.html", filename);

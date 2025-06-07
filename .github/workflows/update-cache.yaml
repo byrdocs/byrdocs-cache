@@ -1,0 +1,16 @@
+name: Update Cache
+
+on:
+  schedule:
+    - cron: "0 22 * * *" # Runs at 22:00 UTC every day
+  workflow_dispatch:
+
+jobs:
+  run_cargo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run
+        run: cargo run -- -t ${{ secrets.BACKEND_TOKEN }}
