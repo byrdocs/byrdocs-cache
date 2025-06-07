@@ -1,5 +1,8 @@
 name: Update Cache
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: "0 22 * * *" # Runs at 22:00 UTC every day
