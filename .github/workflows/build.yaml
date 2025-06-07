@@ -1,6 +1,6 @@
 name: Build and Release
 permissions:
-  contents: read
+  contents: write
 on:
   release:
     types: [created]
@@ -14,11 +14,66 @@ jobs:
       matrix:
         target: [x86_64-unknown-linux-musl]
     steps:
-      - uses: actions/checkout@master
-      - name: Compile and release
-        uses: rust-build/rust-build.action@v1.4.5
+      - name: Checkout code
+        uses: actions/checkout@master
+
+      - name: Get project name
+        id: project_details
+        shell: bash
+        run: |
+          # Extract project name from Cargo.toml. Assumes the main package.
+          PROJECT_NAME=$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.manifest_path | contains("Cargo.toml")) | .name' | head -n 1)
+          echo "name=${PROJECT_NAME}" >> $GITHUB_OUTPUT
+          echo "Project name determined as: ${PROJECT_NAME}"
+
+      - name: Build binary
+        run: cargo build --verbose --release --target ${{ matrix.target }}
+        env:
+          RUSTFLAGS: "-C strip=symbols"
+
+      - name: Prepare release assets
+        id: prepare_assets
+        shell: bash
+        run: |
+          PROJECT_NAME="${{ steps.project_details.outputs.name }}"
+          TAG="${{ github.event.release.tag_name }}"
+          TARGET="${{ matrix.target }}"
+          
+          ARTIFACT_DIR_NAME="${PROJECT_NAME}-${TAG}-${TARGET}"
+          ARCHIVE_NAME="${ARTIFACT_DIR_NAME}.tar.gz"
+          
+          BINARY_PATH="target/${TARGET}/release/${PROJECT_NAME}"
+          
+          if [ ! -f "${BINARY_PATH}" ]; then
+            echo "Error: Binary not found at ${BINARY_PATH}"
+            ls -lah "target/${TARGET}/release/" # List directory contents for debugging
+            exit 1
+          fi
+          
+          echo "Project Name: ${PROJECT_NAME}"
+          echo "Release Tag: ${TAG}"
+          echo "Build Target: ${TARGET}"
+          echo "Binary Path: ${BINARY_PATH}"
+          echo "Archive Name: ${ARCHIVE_NAME}"
+          
+          mkdir -p "staging/${ARTIFACT_DIR_NAME}"
+          
+          cp "${BINARY_PATH}" "staging/${ARTIFACT_DIR_NAME}/"
+          
+          cp README.md "staging/${ARTIFACT_DIR_NAME}/"
+          cp LICENSE "staging/${ARTIFACT_DIR_NAME}/"
+          
+          cd staging
+          tar -czvf "../${ARCHIVE_NAME}" "${ARTIFACT_DIR_NAME}"
+          cd ..
+          
+          echo "asset_path=${ARCHIVE_NAME}" >> $GITHUB_OUTPUT
+          echo "asset_name=${ARCHIVE_NAME}" >> $GITHUB_OUTPUT
+          echo "Successfully prepared release asset: ${ARCHIVE_NAME}"
+
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ steps.prepare_assets.outputs.asset_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          RUSTTARGET: ${{ matrix.target }}
-          EXTRA_FILES: "README.md LICENSE"
